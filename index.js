@@ -10,25 +10,46 @@ const PLACES_API_KEY = process.env.PLACES_API_KEY;
 
 app.use(cors());
 
-async function getChurchImage(churchName, address) {
+async function getChurchData(churchName, address) {
     try {
         const query = encodeURIComponent(`${churchName} ${address}`);
         const searchUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${query}&key=${PLACES_API_KEY}`;
+
         const { data } = await axios.get(searchUrl);
 
         if (data.results && data.results.length > 0) {
-            const firstResult = data.results[0];
-            if (firstResult.photos && firstResult.photos.length > 0) {
-                const photoRef = firstResult.photos[0].photo_reference;
-                return `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photo_reference=${photoRef}&key=${PLACES_API_KEY}`;
+            const place = data.results[0];
+
+            let image = null;
+
+            if (place.photos && place.photos.length > 0) {
+                const photoRef = place.photos[0].photo_reference;
+                image = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photo_reference=${photoRef}&key=${PLACES_API_KEY}`;
             }
+
+            return {
+                imagen: image,
+                lat: place.geometry.location.lat,
+                lng: place.geometry.location.lng
+            };
         }
-        return null;
+
+        return {
+            imagen: null,
+            lat: null,
+            lng: null
+        };
+
     } catch (error) {
-        console.error(`Error fetching photo for ${churchName}:`, error.message);
-        return null;
+        console.error(`Error fetching data for ${churchName}:`, error.message);
+        return {
+            imagen: null,
+            lat: null,
+            lng: null
+        };
     }
 }
+
 app.get("/municipios", async (req, res) => {
     const { estado } = req.query;
 
@@ -116,8 +137,14 @@ app.get("/misas", async (req, res) => {
 
         const parishesWithImages = await Promise.all(
             parroquias.map(async (church) => {
-                const imagen = await getChurchImage(church.nombre, church.direccion);
-                return { ...church, imagen };
+                const placeData = await getChurchData(church.nombre, church.direccion);
+
+                return {
+                    ...church,
+                    imagen: placeData.imagen,
+                    lat: placeData.lat,
+                    lng: placeData.lng
+                };
             })
         );
 
