@@ -1,11 +1,12 @@
+import "dotenv/config";
 import express from "express";
 import axios from "axios";
 import * as cheerio from "cheerio";
 import cors from "cors";
 
 const app = express();
-const PORT = 3000;
-const PLACES_API_KEY = "AIzaSyAH8H9uHWD1SCVdAjtZXyA9e6VnP2O2FFU";
+const PORT = process.env.PORT || 3000;
+const PLACES_API_KEY = process.env.PLACES_API_KEY;
 
 app.use(cors());
 
