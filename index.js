@@ -110,6 +110,130 @@ app.get("/misas", async (req, res) => {
     }
 });
 
+// ─── Saints Cache (in-memory TTL) ────────────────────────────────────────────
+const cache = new Map();
+
+function getCache(key) {
+    const entry = cache.get(key);
+    if (!entry) return null;
+    if (Date.now() > entry.expiresAt) {
+        cache.delete(key);
+        return null;
+    }
+    return entry.value;
+}
+
+function setCache(key, value, ttlMs) {
+    cache.set(key, { value, expiresAt: Date.now() + ttlMs });
+}
+
+const TTL_MONTH  = 6  * 60 * 60 * 1000; // 6 h  – month index rarely changes
+const TTL_DAY    = 24 * 60 * 60 * 1000; // 24 h – daily page never changes mid-day
+
+// ─── GET /santos?month=3 ──────────────────────────────────────────────────────
+// Returns sorted list of days available in the given month
+app.get("/santos", async (req, res) => {
+    const month = parseInt(req.query.month || new Date().getMonth() + 1, 10);
+
+    if (isNaN(month) || month < 1 || month > 12) {
+        return res.status(400).json({ error: "month debe ser un número entre 1 y 12" });
+    }
+
+    const mm = String(month).padStart(2, "0");
+    const cacheKey = `saints-month-${mm}`;
+    const cached = getCache(cacheKey);
+    if (cached) return res.json(cached);
+
+    try {
+        const url = `https://www.vaticannews.va/es/santos.month.${month}.js`;
+        const { data } = await axios.get(url, { timeout: 8000 });
+
+        const prefix = `_${mm}/`;
+        const days = Object.entries(data)
+            .filter(([key]) => key.startsWith(prefix))
+            .map(([key, val]) => {
+                const day = key.slice(prefix.length); // e.g. "19"
+                return {
+                    day: parseInt(day, 10),
+                    date: val.date,
+                    url: `https://www.vaticannews.va/es/santos/${mm}/${day}.html`,
+                };
+            })
+            .sort((a, b) => a.day - b.day);
+
+        const result = { month, totalDays: days.length, days };
+        setCache(cacheKey, result, TTL_MONTH);
+        res.json(result);
+    } catch (error) {
+        console.error("Error obteniendo índice de santos:", error.message);
+        res.status(500).json({ error: "Error obteniendo santoral del mes" });
+    }
+});
+
+// ─── GET /santos/:month/:day ──────────────────────────────────────────────────
+// Scrapes Vatican News and returns the saint of the day with name, description, image
+app.get("/santos/:month/:day", async (req, res) => {
+    const month = parseInt(req.params.month, 10);
+    const day   = parseInt(req.params.day,   10);
+
+    if (isNaN(month) || isNaN(day) || month < 1 || month > 12 || day < 1 || day > 31) {
+        return res.status(400).json({ error: "Parámetros de mes o día inválidos" });
+    }
+
+    const mm = String(month).padStart(2, "0");
+    const dd = String(day).padStart(2, "0");
+    const cacheKey = `santos-${mm}-${dd}`;
+    const cached = getCache(cacheKey);
+    if (cached) return res.json(cached);
+
+    try {
+        const pageUrl = `https://www.vaticannews.va/es/santos/${mm}/${dd}.html`;
+        const { data: html } = await axios.get(pageUrl, { timeout: 8000 });
+        const $ = cheerio.load(html);
+
+        // section--evidence.section--isStatic is the main saint-of-the-day block
+        // (section--evidence without isStatic is the generic intro)
+        const $evidence = $("section.section--evidence.section--isStatic");
+        const nombre = $evidence.find(".section__head h2").text().trim();
+
+        // Description: p in the section__content of section--isStatic (the evidence section)
+        const descripcion = $evidence.find(".section__content p").first().text().trim();
+
+        // Full article link: a.saintReadMore (relative path → absolute)
+        let articuloHref = $evidence.find("a.saintReadMore").attr("href") || "";
+        if (articuloHref && !articuloHref.startsWith("http")) {
+            articuloHref = "https://www.vaticannews.va" + articuloHref;
+        }
+        const articuloUrl = articuloHref || pageUrl;
+
+        // Image: lazy-load; real path is in data-original attribute — use $evidence to scope correctly
+        let imagen = null;
+        const thumbnailDataOriginal = $evidence.find("img[data-original]").attr("data-original");
+        if (thumbnailDataOriginal) {
+            imagen = thumbnailDataOriginal.startsWith("http")
+                ? thumbnailDataOriginal
+                : "https://www.vaticannews.va" + thumbnailDataOriginal;
+        }
+
+        const result = {
+            month,
+            day,
+            fecha: `${dd}/${mm}`,
+            nombre: nombre || null,
+            descripcion: descripcion || null,
+            imagen: imagen || null,
+            articuloUrl,
+            pageUrl,
+        };
+
+        setCache(cacheKey, result, TTL_DAY);
+        res.json(result);
+    } catch (error) {
+        console.error(`Error obteniendo santo ${mm}/${dd}:`, error.message);
+        res.status(500).json({ error: "Error obteniendo información del santo" });
+    }
+});
+
 app.listen(PORT, () => {
     console.log(`Servidor corriendo en puerto ${PORT}`);
 });
