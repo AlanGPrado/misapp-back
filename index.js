@@ -5,7 +5,7 @@ import * as cheerio from "cheerio";
 import cors from "cors";
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = 8080;
 
 app.use(cors());
 
