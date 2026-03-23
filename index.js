@@ -5,10 +5,13 @@ import * as cheerio from "cheerio";
 import cors from "cors";
 
 const app = express();
-// const PORT = process.env.PORT || 3000;
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 app.use(cors());
+
+app.get('/', (req, res) => {
+    res.send('OK');
+});
 
 app.get("/municipios", async (req, res) => {
     const { estado } = req.query;
@@ -127,8 +130,8 @@ function setCache(key, value, ttlMs) {
     cache.set(key, { value, expiresAt: Date.now() + ttlMs });
 }
 
-const TTL_MONTH  = 6  * 60 * 60 * 1000; // 6 h  – month index rarely changes
-const TTL_DAY    = 24 * 60 * 60 * 1000; // 24 h – daily page never changes mid-day
+const TTL_MONTH = 6 * 60 * 60 * 1000; // 6 h  – month index rarely changes
+const TTL_DAY = 24 * 60 * 60 * 1000; // 24 h – daily page never changes mid-day
 
 // ─── GET /santos?month=3 ──────────────────────────────────────────────────────
 // Returns sorted list of days available in the given month
@@ -174,7 +177,7 @@ app.get("/santos", async (req, res) => {
 // Scrapes Vatican News and returns the saint of the day with name, description, image
 app.get("/santos/:month/:day", async (req, res) => {
     const month = parseInt(req.params.month, 10);
-    const day   = parseInt(req.params.day,   10);
+    const day = parseInt(req.params.day, 10);
 
     if (isNaN(month) || isNaN(day) || month < 1 || month > 12 || day < 1 || day > 31) {
         return res.status(400).json({ error: "Parámetros de mes o día inválidos" });
