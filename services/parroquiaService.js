@@ -159,11 +159,9 @@ export const upsertParroquia = async (churchData) => {
  * @returns {Promise<Array>}
  */
 export const getParroquias = async (estado, municipio_id, page = 1) => {
-    console.log(`[getParroquias] Start: estado=${estado}, municipio=${municipio_id}, page=${page}`);
     const limit = 5;
     const offset = (page - 1) * limit;
 
-    console.log(`[getParroquias] Querying cache...`);
     const cachedData = await query(
         `SELECT * FROM parroquias
          WHERE estado = $1 AND municipio_id = $2
@@ -172,21 +170,14 @@ export const getParroquias = async (estado, municipio_id, page = 1) => {
         [estado, municipio_id, limit, offset]
     );
 
-    let parishes = cachedData.rows.map(p => ({
-        ...p,
-        photos: typeof p.photos === 'string' ? JSON.parse(p.photos) : p.photos
-    }));
-
-    console.log(`[getParroquias] Found ${parishes.length} parishes in cache`);
+    let parishes = cachedData.rows;
 
     // Not in DB? Scrape and save
     if (parishes.length === 0) {
-        console.log(`[getParroquias] No parishes in cache, starting scrape for estado=${estado}, municipio=${municipio_id}, page=${page}`);
         parishes = await scrapeParroquias(estado, municipio_id, page);
-        console.log(`[getParroquias] Scraped ${parishes.length} parishes`);
     }
     
-    console.log(`[getParroquias] Checking enrichment needs...`);
+    // Background enrichment for missing details (Photos from R2, Place ID, Coords)
     await query('BEGIN');
 
     const { rows: needsEnrichment } = await query(`
@@ -203,7 +194,6 @@ export const getParroquias = async (estado, municipio_id, page = 1) => {
     `, [estado, municipio_id]);
 
     await query('COMMIT');
-    console.log(`[getParroquias] Parishes needing enrichment: ${needsEnrichment.length}`);
 
     if (needsEnrichment.length > 0) {
         const enrichmentPromises = needsEnrichment.map(church =>
