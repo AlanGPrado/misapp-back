@@ -6,6 +6,7 @@ import parroquiaRoutes from "./routes/parroquiaRoutes.js";
 import municipioRoutes from "./routes/municipioRoutes.js";
 import santosRoutes from "./routes/santosRoutes.js";
 import reportesRoutes from "./routes/reportesRoutes.js";
+import { initScrapedMunicipios } from "./services/parroquiaService.js";
 
 dotenv.config();
 
@@ -25,7 +26,21 @@ app.get('/', (req, res) => {
     res.send('API de Misas [Online]');
 });
 
-app.listen(PORT, () => {
-    console.log(`🚀 Servidor corriendo en puerto ${PORT}`);
-    console.log(`🌍 Base de Datos: ${process.env.DATABASE_URL ? 'Configurada' : 'No Configurada'}`);
-});
+const start = async () => {
+    try {
+        console.log("🔥 Starting server...");
+
+        await initScrapedMunicipios(); // 👈 IMPORTANTE
+
+        app.listen(PORT, () => {
+            console.log(`🚀 Servidor corriendo en puerto ${PORT}`);
+            console.log(`🌍 Base de Datos: ${process.env.DATABASE_URL ? 'Configurada' : 'No Configurada'}`);
+        });
+
+    } catch (err) {
+        console.error("❌ Error starting server:", err.message);
+        process.exit(1);
+    }
+};
+
+start();

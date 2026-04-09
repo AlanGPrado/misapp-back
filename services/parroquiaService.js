@@ -80,24 +80,50 @@ const scrapeParroquias = async (estado, municipio_id, page) => {
 // Ensure the scraped_municipios table exists when this module is first imported
 // Then pre-load all already-scraped cities into memory so the lock
 // works correctly even after server restarts (no per-request DB check needed).
-query(`
-    CREATE TABLE IF NOT EXISTS scraped_municipios (
-        estado INT NOT NULL,
-        municipio_id INT NOT NULL,
-        scraped_at TIMESTAMP DEFAULT NOW(),
-        PRIMARY KEY (estado, municipio_id)
-    );
-`)
-  .then(() => query('SELECT estado, municipio_id FROM scraped_municipios'))
-  .then(({ rows }) => {
-      rows.forEach(({ estado, municipio_id }) =>
-          scrapingInProgress.add(`${estado}-${municipio_id}`)
-      );
-      if (rows.length > 0)
-          console.log(`[Startup] ${rows.length} municipio(s) already fully scraped — loaded into memory.`);
-  })
-  .catch(err => console.error('[DB] scraped_municipios init error:', err.message));
+// query(`
+//     CREATE TABLE IF NOT EXISTS scraped_municipios (
+//         estado INT NOT NULL,
+//         municipio_id INT NOT NULL,
+//         scraped_at TIMESTAMP DEFAULT NOW(),
+//         PRIMARY KEY (estado, municipio_id)
+//     );
+// `)
+//   .then(() => query('SELECT estado, municipio_id FROM scraped_municipios'))
+//   .then(({ rows }) => {
+//       rows.forEach(({ estado, municipio_id }) =>
+//           scrapingInProgress.add(`${estado}-${municipio_id}`)
+//       );
+//       if (rows.length > 0)
+//           console.log(`[Startup] ${rows.length} municipio(s) already fully scraped — loaded into memory.`);
+//   })
+//   .catch(err => console.error('[DB] scraped_municipios init error:', err.message));
+export const initScrapedMunicipios = async () => {
+    try {
+        await query(`
+            CREATE TABLE IF NOT EXISTS scraped_municipios (
+                estado INT NOT NULL,
+                municipio_id INT NOT NULL,
+                scraped_at TIMESTAMP DEFAULT NOW(),
+                PRIMARY KEY (estado, municipio_id)
+            );
+        `);
 
+        const { rows } = await query(
+            'SELECT estado, municipio_id FROM scraped_municipios'
+        );
+
+        rows.forEach(({ estado, municipio_id }) =>
+            scrapingInProgress.add(`${estado}-${municipio_id}`)
+        );
+
+        if (rows.length > 0) {
+            console.log(`[Startup] ${rows.length} municipio(s) loaded`);
+        }
+
+    } catch (err) {
+        console.error('[DB INIT ERROR]:', err.message);
+    }
+};
 // In-memory Set: key = `${estado}-${municipio_id}`
 // A key is added when a scrape STARTS and NEVER removed.
 // Pre-populated from DB at startup so restarts don't re-trigger scrapes.
