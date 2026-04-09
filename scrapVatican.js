@@ -1,6 +1,9 @@
 import axios from "axios";
 import * as cheerio from "cheerio";
 import pkg from "pg";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const { Pool } = pkg;
 
@@ -99,6 +102,7 @@ const saveToDB = async (data) => {
 const run = async () => {
     for (let month = 1; month <= 12; month++) {
         for (let day = 1; day <= 31; day++) {
+            console.log(`🔎 Checking ${month}/${day}`);
             const data = await getDayData(month, day);
 
             if (data && data.santos.length > 0) {

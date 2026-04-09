@@ -61,7 +61,7 @@ export const getSantoDay = async (month, day) => {
     if (cached) return cached;
 
     try {
-        const pageUrl = `https://www.vaticannews.va/es/santos/${mm}/01.html`;
+        const pageUrl = `https://www.vaticannews.va/es/santos/${mm}/${dd}.html`;
         const { data: html } = await axios.get(pageUrl, { timeout: 8000 });
         const $ = cheerio.load(html);
 
