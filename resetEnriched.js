@@ -11,7 +11,7 @@ async function resetEnriched() {
         WHERE photos::text LIKE '%googleapis.com%'
     `);
     console.log(`Updated ${res.rowCount} rows.`);
-    process.exit(0);
+    // process.exit(0);
 }
 
 resetEnriched().catch(console.error);

@@ -11,7 +11,7 @@ async function fixDB() {
     } catch (err) {
         console.log("Constraint might already exist, error:", err.message);
     }
-    process.exit(0);
+    // process.exit(0);
 }
 
 fixDB().catch(console.error);
