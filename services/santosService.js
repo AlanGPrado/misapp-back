@@ -61,13 +61,30 @@ export const getSantoDay = async (month, day) => {
     if (cached) return cached;
 
     try {
-        const pageUrl = `https://www.vaticannews.va/es/santos/${mm}/${dd}.html`;
+        const pageUrl = `https://www.vaticannews.va/es/santos/${mm}/01.html`;
         const { data: html } = await axios.get(pageUrl, { timeout: 8000 });
         const $ = cheerio.load(html);
 
         const $evidence = $("section.section--evidence.section--isStatic");
-        const nombre = $evidence.find(".section__head h2").text().trim();
-        const descripcion = $evidence.find(".section__content p").first().text().trim();
+        // const nombre = $evidence.find(".section__head h2").text().trim();
+        // const descripcion = $evidence.find(".section__content p").first().text().trim();
+
+        const rawNombre = $evidence.find(".section__head h2").text().trim();
+
+        const nombres = rawNombre
+            .split("\n")
+            .map(n => n.trim())
+            .filter(Boolean);
+
+        const descripciones = $evidence
+            .find(".section__content p")
+            .map((i, el) => $(el).text().trim())
+            .get();
+
+        const santos = nombres.map((nombre, index) => ({
+            nombre,
+            descripcion: descripciones[index] || null
+        }));
 
         let articuloHref = $evidence.find("a.saintReadMore").attr("href") || "";
         if (articuloHref && !articuloHref.startsWith("http")) {
@@ -87,13 +104,11 @@ export const getSantoDay = async (month, day) => {
             month,
             day,
             fecha: `${dd}/${mm}`,
-            nombre: nombre || null,
-            descripcion: descripcion || null,
+            santos,
             imagen: imagen || null,
             articuloUrl,
             pageUrl,
         };
-
         setCache(cacheKey, result, TTL_DAY);
         return result;
     } catch (error) {

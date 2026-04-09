@@ -37,9 +37,9 @@ export const uploadGooglePhotoToR2 = async (googlePhotoUrl) => {
         // 1. Download image from Google
         const response = await axios.get(googlePhotoUrl, { responseType: 'arraybuffer' });
         const buffer = Buffer.from(response.data, "binary");
-        
+
         const contentType = response.headers['content-type'] || 'image/jpeg';
-        
+
         // 2. Generate unique filename
         const hash = crypto.createHash('md5').update(googlePhotoUrl + Date.now()).digest('hex');
         const ext = contentType.split('/')[1] || 'jpg';
@@ -72,7 +72,7 @@ export const searchChurchOnGoogle = async (nombre, direccion) => {
 
         const query = `${nombre} ${direccion}`.trim();
         const url = `https://places.googleapis.com/v1/places:searchText`;
-        
+
         const reqBody = {
             textQuery: query,
             languageCode: "es"
@@ -92,7 +92,7 @@ export const searchChurchOnGoogle = async (nombre, direccion) => {
         let photosUrls = [];
         if (place.photos && place.photos.length > 0) {
             // Take up to 3 photos
-            const photosToProcess = place.photos.slice(0, 3);
+            const photosToProcess = place.photos.slice(0, 6);
             for (const photo of photosToProcess) {
                 const googleUrl = `https://places.googleapis.com/v1/${photo.name}/media?key=${apiKey}&maxHeightPx=800&maxWidthPx=800`;
                 // Upload to R2!

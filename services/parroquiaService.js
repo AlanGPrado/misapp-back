@@ -77,6 +77,95 @@ const scrapeParroquias = async (estado, municipio_id, page) => {
     }
 };
 
+// Ensure the scraped_municipios table exists when this module is first imported
+// Then pre-load all already-scraped cities into memory so the lock
+// works correctly even after server restarts (no per-request DB check needed).
+query(`
+    CREATE TABLE IF NOT EXISTS scraped_municipios (
+        estado INT NOT NULL,
+        municipio_id INT NOT NULL,
+        scraped_at TIMESTAMP DEFAULT NOW(),
+        PRIMARY KEY (estado, municipio_id)
+    );
+`)
+  .then(() => query('SELECT estado, municipio_id FROM scraped_municipios'))
+  .then(({ rows }) => {
+      rows.forEach(({ estado, municipio_id }) =>
+          scrapingInProgress.add(`${estado}-${municipio_id}`)
+      );
+      if (rows.length > 0)
+          console.log(`[Startup] ${rows.length} municipio(s) already fully scraped — loaded into memory.`);
+  })
+  .catch(err => console.error('[DB] scraped_municipios init error:', err.message));
+
+// In-memory Set: key = `${estado}-${municipio_id}`
+// A key is added when a scrape STARTS and NEVER removed.
+// Pre-populated from DB at startup so restarts don't re-trigger scrapes.
+export const scrapingInProgress = new Set();
+
+/**
+ * Returns true if the municipio has been fully scraped and persisted in DB.
+ */
+export const isMunicipioFullyScraped = async (estado, municipio_id) => {
+    try {
+        const { rows } = await query(
+            `SELECT 1 FROM scraped_municipios WHERE estado=$1 AND municipio_id=$2 LIMIT 1`,
+            [estado, municipio_id]
+        );
+        return rows.length > 0;
+    } catch {
+        return false;
+    }
+};
+
+/**
+ * Fire-and-forget: scrape ALL pages for a given estado+municipio_id
+ * and upsert every church into the DB. Stops when a page returns 0 results.
+ * On success, writes a row to scraped_municipios so it never runs again.
+ */
+export const scrapeAllPagesBackground = (estado, municipio_id) => {
+    const key = `${estado}-${municipio_id}`;
+    if (scrapingInProgress.has(key)) return; // already running or done this session
+    scrapingInProgress.add(key); // keep forever — prevents re-runs on same session
+
+    (async () => {
+        console.log(`[BG Scrape] Starting full scrape for estado=${estado}, municipio_id=${municipio_id}`);
+        let page = 1;
+        let totalSaved = 0;
+
+        while (true) {
+            try {
+                const results = await scrapeParroquias(estado, municipio_id, page);
+                if (!results || results.length === 0) {
+                    console.log(`[BG Scrape] Page ${page}: empty — stopping.`);
+                    break;
+                }
+                console.log(`[BG Scrape] Page ${page}: scraped ${results.length} churches.`);
+                totalSaved += results.length;
+                page++;
+            } catch (err) {
+                console.error(`[BG Scrape] Error on page ${page}:`, err.message);
+                break;
+            }
+        }
+
+        // Persist completion so it survives server restarts
+        try {
+            await query(
+                `INSERT INTO scraped_municipios (estado, municipio_id)
+                 VALUES ($1, $2)
+                 ON CONFLICT DO NOTHING`,
+                [estado, municipio_id]
+            );
+        } catch (err) {
+            console.error('[BG Scrape] Could not mark municipio as scraped:', err.message);
+        }
+
+        console.log(`[BG Scrape] Done — ${totalSaved} total churches saved for estado=${estado}, municipio_id=${municipio_id}.`);
+    })();
+};
+
+
 /**
  * Insert or update a parroquia record in the DB.
  * Returns the saved row (with its DB `id`).
@@ -103,7 +192,7 @@ export const upsertParroquia = async (churchData) => {
             last_updated
         )
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW())
-        ON CONFLICT (nombre, direccion)
+        ON CONFLICT ON CONSTRAINT parroquias_unique_nombre_direccion
         DO UPDATE SET
             lat = COALESCE(EXCLUDED.lat, parroquias.lat),
             lng = COALESCE(EXCLUDED.lng, parroquias.lng),
@@ -158,10 +247,37 @@ export const upsertParroquia = async (churchData) => {
  * @param {number} page
  * @returns {Promise<Array>}
  */
-export const getParroquias = async (estado, municipio_id, page = 1) => {
+export const getParroquias = async (estado, municipio_id, page = 1, lat = null, lng = null) => {
     const limit = 5;
     const offset = (page - 1) * limit;
 
+    // If the city is fully scraped AND we have the user's location,
+    // serve ALL churches from DB sorted by proximity (nearest first)
+    const fullyScraped = await isMunicipioFullyScraped(estado, municipio_id);
+    if (fullyScraped && lat !== null && lng !== null) {
+        const { rows } = await query(
+            `SELECT * FROM parroquias
+             WHERE estado = $1 AND municipio_id = $2
+             ORDER BY
+               CASE WHEN lat IS NOT NULL AND lng IS NOT NULL
+                 THEN SQRT(POWER(lat::float - $3, 2) + POWER(lng::float - $4, 2))
+                 ELSE 9999
+               END ASC,
+               id ASC
+             LIMIT $5 OFFSET $6`,
+            [estado, municipio_id, parseFloat(lat), parseFloat(lng), limit, offset]
+        );
+
+        const totalRes = await query(
+            `SELECT COUNT(*) FROM parroquias WHERE estado = $1 AND municipio_id = $2`,
+            [estado, municipio_id]
+        );
+        const total = parseInt(totalRes.rows[0].count);
+
+        return { data: rows, total };
+    }
+
+    // Fallback: default paged query (city not yet fully scraped)
     const cachedData = await query(
         `SELECT * FROM parroquias
          WHERE estado = $1 AND municipio_id = $2
@@ -170,13 +286,21 @@ export const getParroquias = async (estado, municipio_id, page = 1) => {
         [estado, municipio_id, limit, offset]
     );
 
+    const totalCachedRes = await query(
+        `SELECT COUNT(*) FROM parroquias WHERE estado = $1 AND municipio_id = $2`,
+        [estado, municipio_id]
+    );
+    const totalCached = parseInt(totalCachedRes.rows[0].count);
+
     let parishes = cachedData.rows;
 
-    // Not in DB? Scrape and save
+    // Not in DB at all? Scrape page on demand
     if (parishes.length === 0) {
         parishes = await scrapeParroquias(estado, municipio_id, page);
+        // If we just scraped, total might still be just this page or we can't easily know total from just scraping 1 page without a full scrape.
+        // But scrapingInProgress logic eventually fills it.
     }
-    
+
     // Background enrichment for missing details (Photos from R2, Place ID, Coords)
     await query('BEGIN');
 
@@ -237,5 +361,5 @@ export const getParroquias = async (estado, municipio_id, page = 1) => {
         );
     }
 
-    return parishes;
+    return { data: parishes, total: totalCached || parishes.length };
 };
