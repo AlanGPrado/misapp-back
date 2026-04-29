@@ -1,5 +1,4 @@
-import axios from "axios";
-import * as cheerio from "cheerio";
+import { query } from "../db/index.js";
 
 // Saints Cache (in-memory TTL)
 const cache = new Map();
@@ -19,7 +18,8 @@ function setCache(key, value, ttlMs) {
 }
 
 const TTL_MONTH = 6 * 60 * 60 * 1000;
-const TTL_DAY = 24 * 60 * 60 * 1000;
+// const TTL_DAY = 24 * 60 * 60 * 1000;
+const TTL_DAY = 0;
 
 export const getSantosMonth = async (month) => {
     const mm = String(month).padStart(2, "0");
@@ -56,63 +56,41 @@ export const getSantosMonth = async (month) => {
 export const getSantoDay = async (month, day) => {
     const mm = String(month).padStart(2, "0");
     const dd = String(day).padStart(2, "0");
+
     const cacheKey = `santos-${mm}-${dd}`;
     const cached = getCache(cacheKey);
     if (cached) return cached;
 
     try {
-        const pageUrl = `https://www.vaticannews.va/es/santos/${mm}/${dd}.html`;
-        const { data: html } = await axios.get(pageUrl, { timeout: 8000 });
-        const $ = cheerio.load(html);
+        console.log("🔥 FROM DB");
 
-        const $evidence = $("section.section--evidence.section--isStatic");
-        // const nombre = $evidence.find(".section__head h2").text().trim();
-        // const descripcion = $evidence.find(".section__content p").first().text().trim();
+        const { rows } = await query(
+            `SELECT * FROM saints WHERE month = $1 AND day = $2 LIMIT 1`,
+            [month, day]
+        );
 
-        const rawNombre = $evidence.find(".section__head h2").text().trim();
-
-        const nombres = rawNombre
-            .split("\n")
-            .map(n => n.trim())
-            .filter(Boolean);
-
-        const descripciones = $evidence
-            .find(".section__content p")
-            .map((i, el) => $(el).text().trim())
-            .get();
-
-        const santos = nombres.map((nombre, index) => ({
-            nombre,
-            descripcion: descripciones[index] || null
-        }));
-
-        let articuloHref = $evidence.find("a.saintReadMore").attr("href") || "";
-        if (articuloHref && !articuloHref.startsWith("http")) {
-            articuloHref = "https://www.vaticannews.va" + articuloHref;
+        if (rows.length === 0) {
+            throw new Error("No santo en DB");
         }
-        const articuloUrl = articuloHref || pageUrl;
 
-        let imagen = null;
-        const thumbnailDataOriginal = $evidence.find("img[data-original]").attr("data-original");
-        if (thumbnailDataOriginal) {
-            imagen = thumbnailDataOriginal.startsWith("http")
-                ? thumbnailDataOriginal
-                : "https://www.vaticannews.va" + thumbnailDataOriginal;
-        }
+        const row = rows[0];
 
         const result = {
-            month,
-            day,
-            fecha: `${dd}/${mm}`,
-            santos,
-            imagen: imagen || null,
-            articuloUrl,
-            pageUrl,
+            month: row.month,
+            day: row.day,
+            fecha: row.fecha,
+            santos: typeof row.santos === "string"
+                ? JSON.parse(row.santos)
+                : row.santos,
+            imagen: row.imagen,
+            articuloUrl: row.articulo_url,
         };
+
         setCache(cacheKey, result, TTL_DAY);
         return result;
+
     } catch (error) {
-        console.error(`Saints Service Day Error for ${mm}/${dd}:`, error.message);
+        console.error("DB Saints Error:", error.message);
         throw new Error("Unable to fetch saint of the day.");
     }
-}
+};
