@@ -6,6 +6,7 @@ import parroquiaRoutes from "./routes/parroquiaRoutes.js";
 import municipioRoutes from "./routes/municipioRoutes.js";
 import santosRoutes from "./routes/santosRoutes.js";
 import reportesRoutes from "./routes/reportesRoutes.js";
+import authRoutes from "./routes/authRoutes.js";
 import { initScrapedMunicipios } from "./services/parroquiaService.js";
 
 dotenv.config();
@@ -17,6 +18,7 @@ app.use(cors());
 app.use(express.json());
 
 // Main Routes
+app.use("/", authRoutes);
 app.use("/", parroquiaRoutes);
 app.use("/", municipioRoutes);
 app.use("/", santosRoutes);
