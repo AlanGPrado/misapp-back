@@ -13,7 +13,7 @@ const enrichmentLimit = pLimit(1);
  * @param {number} page
  * @returns {Promise<Array>}
  */
-const scrapeParroquias = async (estado, municipio_id, page) => {
+export const scrapeParroquias = async (estado, municipio_id, page) => {
     try {
         const url = `https://dondehaymisa.com/busqueda?diocese=&nombre=&estado=${estado}&municipio_id=${municipio_id}&tipo=&dia=&hora=&tipo_servicio=&formType=basic&page=${page}#parishResults`;
         const { data: html } = await axios.get(url);

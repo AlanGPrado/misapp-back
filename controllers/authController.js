@@ -222,7 +222,7 @@ export const logout = async (req, res) => {
 export const getMe = async (req, res) => {
     try {
         const result = await query(
-            'SELECT id, name, email, profile_pic_id, created_at FROM users WHERE id = $1',
+            'SELECT id, name, email, country, profile_pic_id, created_at FROM users WHERE id = $1',
             [req.user.id]
         );
         if (result.rows.length === 0) {
@@ -233,11 +233,76 @@ export const getMe = async (req, res) => {
             id: user.id,
             name: user.name,
             email: user.email,
+            country: user.country,
             profilePicId: user.profile_pic_id,
             createdAt: user.created_at,
         });
     } catch (err) {
         console.error('❌ getMe error:', err.message);
+        return res.status(500).json({ error: 'Error interno del servidor.' });
+    }
+};
+
+// ─── Update Profile (protected) ───────────────────────────────────────────
+
+export const updateProfile = async (req, res) => {
+    const { name, email, country, profilePicId } = req.body;
+    const userId = req.user.id;
+
+    try {
+        // Basic validation
+        if (email) {
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(email)) {
+                return res.status(400).json({ error: 'Formato de email inválido.' });
+            }
+
+            // Check if email is already taken by another user
+            const existing = await query(
+                'SELECT id FROM users WHERE email = $1 AND id != $2',
+                [email.toLowerCase(), userId]
+            );
+            if (existing.rows.length > 0) {
+                return res.status(409).json({ error: 'Este correo ya está en uso por otra cuenta.' });
+            }
+        }
+
+        if (name && name.trim().length < 2) {
+            return res.status(400).json({ error: 'El nombre debe tener al menos 2 caracteres.' });
+        }
+
+        // Update user
+        const result = await query(
+            `UPDATE users 
+             SET name = COALESCE($1, name), 
+                 email = COALESCE($2, email), 
+                 country = COALESCE($3, country),
+                 profile_pic_id = COALESCE($4, profile_pic_id),
+                 updated_at = NOW()
+             WHERE id = $5
+             RETURNING id, name, email, country, profile_pic_id, created_at`,
+            [name?.trim(), email?.toLowerCase(), country?.trim(), profilePicId, userId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Usuario no encontrado.' });
+        }
+
+        const user = result.rows[0];
+
+        return res.status(200).json({
+            message: 'Perfil actualizado exitosamente.',
+            user: {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                country: user.country,
+                profilePicId: user.profile_pic_id,
+                createdAt: user.created_at,
+            }
+        });
+    } catch (err) {
+        console.error('❌ updateProfile error:', err.message);
         return res.status(500).json({ error: 'Error interno del servidor.' });
     }
 };
