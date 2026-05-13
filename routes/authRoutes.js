@@ -1,7 +1,7 @@
 // routes/authRoutes.js
 
 import { Router } from 'express';
-import { register, login, refreshToken, logout, getMe, updateProfile } from '../controllers/authController.js';
+import { register, login, refreshToken, logout, getMe, updateProfile, deleteAccount } from '../controllers/authController.js';
 import { forgotPassword, resetPassword } from '../controllers/passwordResetController.js';
 import { requireAuth } from '../middleware/authMiddleware.js';
 
@@ -18,5 +18,6 @@ router.post('/auth/reset-password',   resetPassword);
 // Protected routes
 router.get('/auth/me', requireAuth, getMe);
 router.put('/auth/update-profile', requireAuth, updateProfile);
+router.delete('/auth/delete-account', requireAuth, deleteAccount);
 
 export default router;

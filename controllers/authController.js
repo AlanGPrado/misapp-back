@@ -246,7 +246,7 @@ export const getMe = async (req, res) => {
 // ─── Update Profile (protected) ───────────────────────────────────────────
 
 export const updateProfile = async (req, res) => {
-    const { name, email, country, profilePicId } = req.body;
+    const { name, email, country, profilePicId, currentPassword, password } = req.body;
     const userId = req.user.id;
 
     try {
@@ -257,7 +257,6 @@ export const updateProfile = async (req, res) => {
                 return res.status(400).json({ error: 'Formato de email inválido.' });
             }
 
-            // Check if email is already taken by another user
             const existing = await query(
                 'SELECT id FROM users WHERE email = $1 AND id != $2',
                 [email.toLowerCase(), userId]
@@ -271,6 +270,27 @@ export const updateProfile = async (req, res) => {
             return res.status(400).json({ error: 'El nombre debe tener al menos 2 caracteres.' });
         }
 
+        // --- PASSWORD UPDATE LOGIC ---
+        let hashedPassword = null;
+        if (password) {
+            if (!currentPassword) {
+                return res.status(400).json({ error: 'Se requiere la contraseña actual para cambiarla.' });
+            }
+            if (password.length < 8) {
+                return res.status(400).json({ error: 'La nueva contraseña debe tener al menos 8 caracteres.' });
+            }
+
+            // Verify current password
+            const userRes = await query('SELECT password FROM users WHERE id = $1', [userId]);
+            const user = userRes.rows[0];
+            const isMatch = await bcrypt.compare(currentPassword, user.password);
+            if (!isMatch) {
+                return res.status(401).json({ error: 'La contraseña actual es incorrecta.' });
+            }
+
+            hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
+        }
+
         // Update user
         const result = await query(
             `UPDATE users 
@@ -278,10 +298,11 @@ export const updateProfile = async (req, res) => {
                  email = COALESCE($2, email), 
                  country = COALESCE($3, country),
                  profile_pic_id = COALESCE($4, profile_pic_id),
+                 password = COALESCE($5, password),
                  updated_at = NOW()
-             WHERE id = $5
+             WHERE id = $6
              RETURNING id, name, email, country, profile_pic_id, created_at`,
-            [name?.trim(), email?.toLowerCase(), country?.trim(), profilePicId, userId]
+            [name?.trim(), email?.toLowerCase(), country?.trim(), profilePicId, hashedPassword, userId]
         );
 
         if (result.rows.length === 0) {
@@ -290,8 +311,30 @@ export const updateProfile = async (req, res) => {
 
         const user = result.rows[0];
 
+        // --- SESSION REGENERATION ON PASSWORD CHANGE ---
+        let accessToken = null;
+        let refreshToken = null;
+
+        if (hashedPassword) {
+            // Invalidate all existing sessions for this user
+            await query('DELETE FROM refresh_tokens WHERE user_id = $1', [userId]);
+
+            // Issue new tokens
+            accessToken = signAccessToken(user);
+            refreshToken = signRefreshToken(user);
+
+            const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
+            await query(
+                `INSERT INTO refresh_tokens (user_id, token, expires_at)
+                 VALUES ($1, $2, $3)`,
+                [user.id, refreshToken, expiresAt]
+            );
+        }
+
         return res.status(200).json({
             message: 'Perfil actualizado exitosamente.',
+            accessToken, // Will be null if password didn't change
+            refreshToken, // Will be null if password didn't change
             user: {
                 id: user.id,
                 name: user.name,
@@ -303,6 +346,33 @@ export const updateProfile = async (req, res) => {
         });
     } catch (err) {
         console.error('❌ updateProfile error:', err.message);
+        return res.status(500).json({ error: 'Error interno del servidor.' });
+    }
+};
+
+// ─── Delete Account (protected) ───────────────────────────────────────────
+
+export const deleteAccount = async (req, res) => {
+    const userId = req.user.id;
+
+    try {
+        // Start a transaction if possible, or just sequential deletes
+        // 1. Delete favorites (in case no CASCADE)
+        await query('DELETE FROM favorites WHERE user_id = $1', [userId]);
+
+        // 2. Delete refresh tokens (handled by CASCADE if exists, but safe to do)
+        await query('DELETE FROM refresh_tokens WHERE user_id = $1', [userId]);
+
+        // 3. Delete user
+        const result = await query('DELETE FROM users WHERE id = $1 RETURNING id', [userId]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Usuario no encontrado.' });
+        }
+
+        return res.status(200).json({ message: 'Cuenta eliminada exitosamente.' });
+    } catch (err) {
+        console.error('❌ deleteAccount error:', err.message);
         return res.status(500).json({ error: 'Error interno del servidor.' });
     }
 };
