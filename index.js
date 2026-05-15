@@ -8,12 +8,14 @@ import santosRoutes from "./routes/santosRoutes.js";
 import reportesRoutes from "./routes/reportesRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 import favoritesRoutes from "./routes/favoritesRoutes.js";
+import streakRoutes from "./routes/streakRoutes.js";
+import badgeRoutes from "./routes/badgeRoutes.js";
 import { initScrapedMunicipios } from "./services/parroquiaService.js";
 
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 
 app.use(cors());
 app.use(express.json());
@@ -25,6 +27,8 @@ app.use("/", municipioRoutes);
 app.use("/", santosRoutes);
 app.use("/", reportesRoutes);
 app.use("/favorites", favoritesRoutes);
+app.use("/", streakRoutes);
+app.use("/badges", badgeRoutes);
 
 app.get('/', (req, res) => {
     res.send('API de Misas [Online]');
