@@ -10,6 +10,7 @@ import authRoutes from "./routes/authRoutes.js";
 import favoritesRoutes from "./routes/favoritesRoutes.js";
 import streakRoutes from "./routes/streakRoutes.js";
 import badgeRoutes from "./routes/badgeRoutes.js";
+import donationRoutes from "./routes/donationRoutes.js";
 import { initScrapedMunicipios } from "./services/parroquiaService.js";
 
 dotenv.config();
@@ -29,6 +30,7 @@ app.use("/", reportesRoutes);
 app.use("/favorites", favoritesRoutes);
 app.use("/", streakRoutes);
 app.use("/badges", badgeRoutes);
+app.use("/donations", donationRoutes);
 
 app.get('/', (req, res) => {
     res.send('API de Misas [Online]');
