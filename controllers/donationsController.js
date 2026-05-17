@@ -143,6 +143,14 @@ export const verifyPurchase = async (req, res) => {
             [userId]
         );
 
+        // Grant the colaborador badge immediately
+        await query(
+            `INSERT INTO user_badges (user_id, badge_id)
+             VALUES ($1, 'colaborador')
+             ON CONFLICT (user_id, badge_id) DO NOTHING`,
+            [userId]
+        );
+
         console.log(`✅ [donations] User ${userId} is now PREMIUM (${platform})`);
 
         return res.status(200).json({
@@ -195,6 +203,14 @@ export const restorePurchases = async (req, res) => {
 
         await query(
             `UPDATE users SET is_premium = TRUE, updated_at = NOW() WHERE id = $1`,
+            [userId]
+        );
+
+        // Grant the colaborador badge immediately
+        await query(
+            `INSERT INTO user_badges (user_id, badge_id)
+             VALUES ($1, 'colaborador')
+             ON CONFLICT (user_id, badge_id) DO NOTHING`,
             [userId]
         );
 
