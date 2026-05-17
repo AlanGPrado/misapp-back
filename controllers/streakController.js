@@ -1,19 +1,14 @@
 import { query } from '../db/index.js';
+import { checkAndUnlockBadges } from './badgeController.js';
 
 export const getStreaks = async (req, res) => {
     try {
         const userId = req.user.id;
         const result = await query(
-            'SELECT checkin_date FROM user_checkins WHERE user_id = $1 ORDER BY checkin_date DESC',
+            "SELECT TO_CHAR(checkin_date, 'YYYY-MM-DD') as formatted_date FROM user_checkins WHERE user_id = $1 ORDER BY checkin_date DESC",
             [userId]
         );
-        const dates = result.rows.map(row => {
-            const d = new Date(row.checkin_date);
-            const year = d.getFullYear();
-            const month = String(d.getMonth() + 1).padStart(2, '0');
-            const day = String(d.getDate()).padStart(2, '0');
-            return `${year}-${month}-${day}`;
-        });
+        const dates = result.rows.map(row => row.formatted_date);
         res.json({ checkins: dates });
     } catch (err) {
         console.error("❌ Error fetching streaks:", err.message);
@@ -34,6 +29,10 @@ export const addCheckin = async (req, res) => {
             'INSERT INTO user_checkins (user_id, checkin_date) VALUES ($1, $2) ON CONFLICT (user_id, checkin_date) DO NOTHING',
             [userId, date]
         );
+
+        // Run dynamic badge check
+        await checkAndUnlockBadges(userId);
+
         res.json({ message: "Check-in added successfully" });
     } catch (err) {
         console.error("❌ Error adding checkin:", err.message);
