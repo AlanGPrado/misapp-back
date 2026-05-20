@@ -5,11 +5,19 @@ export const getStreaks = async (req, res) => {
     try {
         const userId = req.user.id;
         const result = await query(
-            "SELECT TO_CHAR(checkin_date, 'YYYY-MM-DD') as formatted_date FROM user_checkins WHERE user_id = $1 ORDER BY checkin_date DESC",
+            "SELECT TO_CHAR(checkin_date, 'YYYY-MM-DD') as formatted_date, church_id, created_at FROM user_checkins WHERE user_id = $1 ORDER BY checkin_date DESC",
             [userId]
         );
         const dates = result.rows.map(row => row.formatted_date);
-        res.json({ checkins: dates });
+        const details = result.rows.map(row => ({
+            date: row.formatted_date,
+            churchId: row.church_id,
+            createdAt: row.created_at
+        }));
+        res.json({ 
+            checkins: dates,
+            detailedCheckins: details
+        });
     } catch (err) {
         console.error("❌ Error fetching streaks:", err.message);
         res.status(500).json({ error: "Error fetching streaks" });
@@ -19,15 +27,15 @@ export const getStreaks = async (req, res) => {
 export const addCheckin = async (req, res) => {
     try {
         const userId = req.user.id;
-        const { date } = req.body;
+        const { date, churchId } = req.body;
         
         if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
             return res.status(400).json({ error: "Invalid date format, use YYYY-MM-DD" });
         }
 
         await query(
-            'INSERT INTO user_checkins (user_id, checkin_date) VALUES ($1, $2) ON CONFLICT (user_id, checkin_date) DO NOTHING',
-            [userId, date]
+            'INSERT INTO user_checkins (user_id, checkin_date, church_id) VALUES ($1, $2, $3) ON CONFLICT (user_id, checkin_date, church_id) DO NOTHING',
+            [userId, date, churchId || null]
         );
 
         // Run dynamic badge check

@@ -8,8 +8,9 @@ async function setupStreaks() {
           id SERIAL PRIMARY KEY,
           user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
           checkin_date DATE NOT NULL,
+          church_id VARCHAR(255),
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-          UNIQUE(user_id, checkin_date)
+          UNIQUE(user_id, checkin_date, church_id)
       );
     `);
     console.log('✅ Tablas y esquema creados correctamente.');
