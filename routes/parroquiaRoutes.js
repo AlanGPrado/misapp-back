@@ -2,6 +2,7 @@ import { Router } from "express";
 import { getParroquiasController } from "../controllers/parroquiaController.js";
 import { getParroquiaByIdController } from "../controllers/parroquiaByIdController.js";
 import { getParroquiasByIdsController } from "../controllers/parroquiasByIdsController.js";
+import { searchParroquiasController } from "../controllers/parroquiaSearchController.js";
 
 const router = Router();
 
@@ -13,6 +14,7 @@ const router = Router();
  */
 router.get("/misas", (req, res) => getParroquiasController(req, res));
 
+router.get("/parroquias/search", searchParroquiasController);
 router.get("/parroquias/:id", getParroquiaByIdController);
 // router.get("/parroquias/place/:place_id", getParroquiaByPlaceIdController);
 router.post("/parroquias/by-ids", getParroquiasByIdsController);
