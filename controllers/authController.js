@@ -57,7 +57,7 @@ export const register = async (req, res) => {
         const result = await query(
             `INSERT INTO users (name, email, password)
              VALUES ($1, $2, $3)
-             RETURNING id, name, email, profile_pic_id, created_at`,
+             RETURNING id, name, email, profile_pic_id, accepted_terms, created_at`,
             [name?.trim() || null, email.toLowerCase(), hashedPassword]
         );
 
@@ -83,6 +83,7 @@ export const register = async (req, res) => {
                 name: user.name,
                 email: user.email,
                 profilePicId: user.profile_pic_id,
+                acceptedTerms: user.accepted_terms,
                 createdAt: user.created_at,
             }
         });
@@ -103,7 +104,7 @@ export const login = async (req, res) => {
 
     try {
         const result = await query(
-            'SELECT id, name, email, password, profile_pic_id, created_at FROM users WHERE email = $1',
+            'SELECT id, name, email, password, profile_pic_id, accepted_terms, created_at FROM users WHERE email = $1',
             [email.toLowerCase()]
         );
 
@@ -139,6 +140,7 @@ export const login = async (req, res) => {
                 name: user.name,
                 email: user.email,
                 profilePicId: user.profile_pic_id,
+                acceptedTerms: user.accepted_terms,
                 createdAt: user.created_at,
             }
         });
@@ -222,7 +224,7 @@ export const logout = async (req, res) => {
 export const getMe = async (req, res) => {
     try {
         const result = await query(
-            'SELECT id, name, email, country, profile_pic_id, created_at FROM users WHERE id = $1',
+            'SELECT id, name, email, country, profile_pic_id, accepted_terms, created_at FROM users WHERE id = $1',
             [req.user.id]
         );
         if (result.rows.length === 0) {
@@ -235,6 +237,7 @@ export const getMe = async (req, res) => {
             email: user.email,
             country: user.country,
             profilePicId: user.profile_pic_id,
+            acceptedTerms: user.accepted_terms,
             createdAt: user.created_at,
         });
     } catch (err) {
@@ -246,7 +249,7 @@ export const getMe = async (req, res) => {
 // ─── Update Profile (protected) ───────────────────────────────────────────
 
 export const updateProfile = async (req, res) => {
-    const { name, email, country, profilePicId, currentPassword, password } = req.body;
+    const { name, email, country, profilePicId, currentPassword, password, acceptedTerms } = req.body;
     const userId = req.user.id;
 
     try {
@@ -299,10 +302,11 @@ export const updateProfile = async (req, res) => {
                  country = COALESCE($3, country),
                  profile_pic_id = COALESCE($4, profile_pic_id),
                  password = COALESCE($5, password),
+                 accepted_terms = COALESCE($6, accepted_terms),
                  updated_at = NOW()
-             WHERE id = $6
-             RETURNING id, name, email, country, profile_pic_id, created_at`,
-            [name?.trim(), email?.toLowerCase(), country?.trim(), profilePicId, hashedPassword, userId]
+             WHERE id = $7
+             RETURNING id, name, email, country, profile_pic_id, accepted_terms, created_at`,
+            [name?.trim(), email?.toLowerCase(), country?.trim(), profilePicId, hashedPassword, acceptedTerms, userId]
         );
 
         if (result.rows.length === 0) {
@@ -341,6 +345,7 @@ export const updateProfile = async (req, res) => {
                 email: user.email,
                 country: user.country,
                 profilePicId: user.profile_pic_id,
+                acceptedTerms: user.accepted_terms,
                 createdAt: user.created_at,
             }
         });
@@ -357,13 +362,22 @@ export const deleteAccount = async (req, res) => {
 
     try {
         // Start a transaction if possible, or just sequential deletes
-        // 1. Delete favorites (in case no CASCADE)
+        // 1. Delete favorites
         await query('DELETE FROM favorites WHERE user_id = $1', [userId]);
 
-        // 2. Delete refresh tokens (handled by CASCADE if exists, but safe to do)
+        // 2. Delete user_badges
+        await query('DELETE FROM user_badges WHERE user_id = $1', [userId]);
+
+        // 3. Delete user_checkins
+        await query('DELETE FROM user_checkins WHERE user_id = $1', [userId]);
+
+        // 4. Delete donations
+        await query('DELETE FROM donations WHERE user_id = $1', [userId]);
+
+        // 5. Delete refresh tokens
         await query('DELETE FROM refresh_tokens WHERE user_id = $1', [userId]);
 
-        // 3. Delete user
+        // 6. Delete user
         const result = await query('DELETE FROM users WHERE id = $1 RETURNING id', [userId]);
 
         if (result.rows.length === 0) {
