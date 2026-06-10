@@ -137,25 +137,36 @@ export const getBadges = async (req, res) => {
     }
 };
 
-// Unlock a specific badge
+// Unlock one or more specific badges
 export const unlockBadge = async (req, res) => {
     try {
         const userId = req.user.id;
-        const { badgeId } = req.body;
+        const { badgeId, badgeIds } = req.body;
 
-        if (!badgeId) {
-            return res.status(400).json({ error: 'Badge ID is required' });
+        const idsToUnlock = [];
+        if (badgeId) {
+            idsToUnlock.push(badgeId);
+        }
+        if (Array.isArray(badgeIds)) {
+            idsToUnlock.push(...badgeIds);
         }
 
-        await pool.query(`
-            INSERT INTO user_badges (user_id, badge_id) 
-            VALUES ($1, $2) 
-            ON CONFLICT DO NOTHING
-        `, [userId, badgeId]);
+        if (idsToUnlock.length === 0) {
+            return res.status(400).json({ error: 'Badge ID or badgeIds array is required' });
+        }
 
-        res.json({ message: 'Badge unlocked successfully' });
+        // Insert all specified badges using ON CONFLICT DO NOTHING
+        for (const id of idsToUnlock) {
+            await pool.query(`
+                INSERT INTO user_badges (user_id, badge_id) 
+                VALUES ($1, $2) 
+                ON CONFLICT DO NOTHING
+            `, [userId, id]);
+        }
+
+        res.json({ message: 'Badges unlocked successfully' });
     } catch (err) {
         console.error('Error in unlockBadge:', err);
-        res.status(500).json({ error: 'Failed to unlock badge' });
+        res.status(500).json({ error: 'Failed to unlock badges' });
     }
 };
