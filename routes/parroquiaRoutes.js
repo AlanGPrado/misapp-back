@@ -3,6 +3,7 @@ import { getParroquiasController } from "../controllers/parroquiaController.js";
 import { getParroquiaByIdController } from "../controllers/parroquiaByIdController.js";
 import { getParroquiasByIdsController } from "../controllers/parroquiasByIdsController.js";
 import { searchParroquiasController } from "../controllers/parroquiaSearchController.js";
+import { getParroquiasByBoundsController } from "../controllers/parroquiaBoundsController.js";
 import { requireAuth } from "../middleware/authMiddleware.js";
 import { uploadChurchPhoto } from "../controllers/uploadController.js";
 import { reportChurchPhoto } from "../controllers/reportPhotoController.js";
@@ -17,6 +18,7 @@ const router = Router();
  */
 router.get("/misas", (req, res) => getParroquiasController(req, res));
 
+router.get("/parroquias/bounds", getParroquiasByBoundsController);
 router.get("/parroquias/search", searchParroquiasController);
 router.get("/parroquias/:id", getParroquiaByIdController);
 // router.get("/parroquias/place/:place_id", getParroquiaByPlaceIdController);
